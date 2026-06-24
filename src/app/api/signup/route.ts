@@ -29,12 +29,19 @@ export async function POST(req: Request) {
       );
     }
 
-    const apiKey = process.env.MAILJET_API_KEY;
-    const secretKey = process.env.MAILJET_SECRET_KEY;
-    const fromEmail = process.env.MAILJET_FROM_EMAIL;
-    const fromName = process.env.MAILJET_FROM_NAME || "Bootstrap Priority";
+    const apiKey = process.env.MJ_API_KEY;
+    const secretKey = process.env.MJ_API_SECRET;
+    const fromEmail = process.env.MJ_FROM_EMAIL;
+    const fromName = process.env.MJ_FROM_NAME || "Bootstrap Priority";
 
     if (!apiKey || !secretKey || !fromEmail) {
+      console.error("Variables Mailjet manquantes", {
+        MJ_API_KEY: Boolean(apiKey),
+        MJ_API_SECRET: Boolean(secretKey),
+        MJ_FROM_EMAIL: Boolean(fromEmail),
+        MJ_FROM_NAME: Boolean(fromName),
+      });
+
       return NextResponse.json(
         { error: "Configuration Mailjet manquante." },
         { status: 500 }
@@ -107,7 +114,8 @@ ${TO_EMAIL}
 
     if (!mailjetRes.ok) {
       const errorText = await mailjetRes.text();
-      console.error("Mailjet error:", errorText);
+      console.error("Erreur Mailjet:", errorText);
+
       return NextResponse.json(
         { error: "Erreur Mailjet." },
         { status: 500 }
@@ -116,7 +124,8 @@ ${TO_EMAIL}
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error(error);
+    console.error("Erreur serveur:", error);
+
     return NextResponse.json(
       { error: "Erreur serveur." },
       { status: 500 }
