@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
-import nodemailer from "nodemailer";
+
+export const runtime = "nodejs";
 
 const TO_EMAIL = "spectramediabots@gmail.com";
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
 export async function POST(req: Request) {
   try {
@@ -19,27 +29,50 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    const apiKey = process.env.MAILJET_API_KEY;
+    const secretKey = process.env.MAILJET_SECRET_KEY;
+    const fromEmail = process.env.MAILJET_FROM_EMAIL;
+    const fromName = process.env.MAILJET_FROM_NAME || "Bootstrap Priority";
+
+    if (!apiKey || !secretKey || !fromEmail) {
       return NextResponse.json(
-        { error: "SMTP non configuré." },
+        { error: "Configuration Mailjet manquante." },
         { status: 500 }
       );
     }
 
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
+    const safeName = escapeHtml(name);
+    const safeEmail = escapeHtml(email);
+    const safeCompany = escapeHtml(company || "Non renseigné");
+    const safeNeed = escapeHtml(need || "Non renseigné");
 
-    await transporter.sendMail({
-      from: `"Bootstrap Priority List" <${process.env.SMTP_USER}>`,
-      to: TO_EMAIL,
-      replyTo: email,
-      subject: `Nouvelle inscription prioritaire Bootstrap — ${name}`,
-      text: `
+    const auth = Buffer.from(`${apiKey}:${secretKey}`).toString("base64");
+
+    const mailjetRes = await fetch("https://api.mailjet.com/v3.1/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${auth}`,
+      },
+      body: JSON.stringify({
+        Messages: [
+          {
+            From: {
+              Email: fromEmail,
+              Name: fromName,
+            },
+            To: [
+              {
+                Email: TO_EMAIL,
+                Name: "Spectra Media Bots",
+              },
+            ],
+            ReplyTo: {
+              Email: email,
+              Name: name,
+            },
+            Subject: `Nouvelle inscription prioritaire Bootstrap — ${name}`,
+            TextPart: `
 Nouvelle demande d'accès prioritaire Bootstrap
 
 Nom :
@@ -54,20 +87,32 @@ ${company || "Non renseigné"}
 Besoin / projet :
 ${need || "Non renseigné"}
 
-Destination :
+Destination exclusive :
 ${TO_EMAIL}
-      `,
-      html: `
-        <h2>Nouvelle demande d'accès prioritaire Bootstrap</h2>
-        <p><strong>Nom :</strong> ${name}</p>
-        <p><strong>Email :</strong> ${email}</p>
-        <p><strong>Entreprise / activité :</strong> ${company || "Non renseigné"}</p>
-        <p><strong>Besoin / projet :</strong></p>
-        <p>${need || "Non renseigné"}</p>
-        <hr />
-        <p>Destination exclusive : ${TO_EMAIL}</p>
-      `,
+            `,
+            HTMLPart: `
+              <h2>Nouvelle demande d'accès prioritaire Bootstrap</h2>
+              <p><strong>Nom :</strong> ${safeName}</p>
+              <p><strong>Email :</strong> ${safeEmail}</p>
+              <p><strong>Entreprise / activité :</strong> ${safeCompany}</p>
+              <p><strong>Besoin / projet :</strong></p>
+              <p>${safeNeed.replaceAll("\n", "<br />")}</p>
+              <hr />
+              <p><strong>Destination exclusive :</strong> ${TO_EMAIL}</p>
+            `,
+          },
+        ],
+      }),
     });
+
+    if (!mailjetRes.ok) {
+      const errorText = await mailjetRes.text();
+      console.error("Mailjet error:", errorText);
+      return NextResponse.json(
+        { error: "Erreur Mailjet." },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
